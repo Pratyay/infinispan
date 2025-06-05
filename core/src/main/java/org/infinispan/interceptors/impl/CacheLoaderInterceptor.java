@@ -383,66 +383,12 @@ public class CacheLoaderInterceptor<K, V> extends JmxStatsCommandInterceptor imp
    public CompletionStage<InternalCacheEntry<K, V>> loadAndStoreInDataContainer(InvocationContext ctx, Object key,
                                                                                 int segment, FlagAffectedCommand cmd) {
       InternalCacheEntry<K, V> entry = dataContainer.peek(segment, key);
-      boolean includeStores = true;
       if (entry != null) {
          if (!entry.canExpire() || !entry.isExpired(timeService.wallClockTime())) {
             return CompletableFuture.completedFuture(entry);
          }
-         includeStores = false;
       }
-
-      if (log.isTraceEnabled()) {
-         log.tracef("Loading entry for key %s", key);
-      }
-      CompletionStage<InternalCacheEntry<K, V>> resultStage = persistenceManager.<K, V>loadFromAllStores(key, segment,
-            ctx.isOriginLocal(), includeStores).thenApply(me -> {
-         if (me != null) {
-            InternalCacheEntry<K, V> ice = PersistenceUtil.convert(me, iceFactory);
-            if (getStatisticsEnabled()) {
-               cacheLoads.incrementAndGet();
-            }
-            if (log.isTraceEnabled()) {
-               log.tracef("Loaded entry: %s for key %s from store and attempting to insert into data container",
-                     ice, key);
-            }
-
-            DataContainer.ComputeAction<K, V> putIfAbsentOrExpired = (k, oldEntry, factory) -> {
-               if (oldEntry != null &&
-                     (!oldEntry.canExpire() || !oldEntry.isExpired(timeService.wallClockTime()))) {
-                  return oldEntry;
-               }
-               if (ice.canExpire()) {
-                  ice.touch(timeService.wallClockTime());
-               }
-               return ice;
-            };
-
-            dataContainer.compute(segment, (K) key, putIfAbsentOrExpired);
-            return ice;
-         } else {
-            if (log.isTraceEnabled()) {
-               log.tracef("Missed entry load for key %s from store", key);
-            }
-            if (getStatisticsEnabled()) {
-               cacheMisses.incrementAndGet();
-            }
-            return null;
-         }
-      });
-
-      if (notifier.hasListener(CacheEntryLoaded.class) || notifier.hasListener(CacheEntryActivated.class)) {
-         return resultStage.thenCompose(ice -> {
-            if (ice != null) {
-               V value = ice.getValue();
-               CompletionStage<Void> notificationStage = sendNotification(key, value, true, ctx, cmd);
-               notificationStage = notificationStage.thenCompose(v -> sendNotification(key, value, false, ctx, cmd));
-               return notificationStage.thenApply(ignore -> ice);
-            } else {
-               return CompletableFutures.completedNull();
-            }
-         });
-      }
-      return resultStage;
+      return null;
    }
 
    private boolean skipLoad(InvocationContext ctx, Object key, int segment, FlagAffectedCommand cmd) {
